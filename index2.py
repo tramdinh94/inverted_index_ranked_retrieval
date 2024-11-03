@@ -15,7 +15,9 @@ Created on Mon Oct 28 16:07:54 2024
 import sys
 import os 
 import re
-from collections import namedtuple
+import heapq
+import csv
+
 import nltk
 from nltk import word_tokenize, sent_tokenize
 from nltk import TreebankWordTokenizer
@@ -23,26 +25,45 @@ from nltk import WordPunctTokenizer
 from nltk import RegexpTokenizer
 from nltk.corpus import stopwords
 
-#doc_dir = sys.argv[1]
-#index_dir = sys.argv[2]
+
+
+#For setting path
+def create_dir(parent, child):
+    if parent:
+        new_dir = os.path.join(parent, child)
+    else:
+        new_dir = child      
+    #create dir if not existing
+    if not os.path.exists(new_dir):
+        os.makedirs(new_dir)
+    #return the path of new dir    
+    return new_dir    
+
+
 
 #SETTING UP PATHS
+#doc_dir = sys.argv[1]
+#index_folder = sys.argv[2]
 doc_dir = 'data'
-index_dir = 'my_index'
-if not os.path.exists(index_dir):
-    os.makedirs(index_dir)
+index_folder = 'my_index'
+cwd = os.getcwd()
 
-doc_line_pos_dir = os.path.join(index_dir, "doc_line_pos")
-if not os.path.exists(doc_line_pos_dir):
-    os.makedirs(doc_line_pos_dir)
-    
-doc_term_pos_dir = os.path.join(index_dir, "doc_term_pos")    
-if not os.path.exists(doc_term_pos_dir):
-    os.makedirs(doc_term_pos_dir)
-    
-term_doc_dir = os.path.join(index_dir, 'term_doc')
-if not os.path.exists(term_doc_dir):
-    os.makedirs(term_doc_dir)
+index_dir = create_dir(parent = False, child = index_folder)
+
+doc_line_pos_dir = create_dir(index_dir, "doc_line_endposition")
+
+doc_term_pos_main_dir = create_dir(index_dir, "doc_term_position_main")
+doc_term_pos_stopwords_dir = create_dir(index_dir, "doc_term_position_stopwords")
+
+term_doc_main_dir = create_dir(index_dir, "term_doc_main")
+term_doc_stopwords_dir = create_dir(index_dir, "term_doc_stopwords")
+
+          
+#write the path of doc
+with open(os.path.join(index_dir, "raw_documents.txt"), 'w') as f:
+          f.write(doc_dir + '\n')
+          
+
 
 
 
@@ -66,10 +87,16 @@ stopwords = ['i', 'me', 'my', 'myself', 'we', 'our', 'ours', 'ourselves', 'you',
             'are', 'be', "was", "were", "is", "am"
             'could', 'did', 'does', "do", 
             'had', 'has', "have", 'may', 'might',     
-            's', 't', 'd', 'll', 'm', 'o', 're', 've', 'y', 
-            "'s", "'ve", "'ll", "'m", "'re", "'d", "'t"]
- 
-            
+            's', 't', 'd', 'll', 'm', 'o', 're', 've', 'y']
+
+stopwords.sort()  
+
+#a dictionary for stopword and their id 
+#(which is their sorted index position)
+stopword_id = {}
+for i, w in enumerate((stopwords)):
+    stopwords[w] = i
+      
 
 grammar_term = ["'", ".", ",","'s", "'ve", "'ll", "'m", "'re", "'d", "'t"]
 not_index = ["'", ".", ","]
@@ -88,38 +115,45 @@ Term_Doc = namedtuple('Term_Doc', ['term', 'doc'])
 
 
 
-
-
-class doc_term_index(dict):
-    def __init__(self, docID, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.docID = docID
-        
+#data structure for a block
+#created as a subclass of dictionary 
+#with value of a key is a list 
+class Mydict(dict):
     #adding positional index list of a term    
-    def add_pos(self, term, pos):
-        if term in self:
-            self[term].append(pos)
-        else:
-            self[term] = [pos]
+    # k, p = term and individual posting (docID) if dict keys = terms
+    # k, P = doc and term position in a doc if dict keys = docIDs    
     
-    #print both term_doc and doc_term_pos csv (ordered)
-    def print_to_2file(self, term_doc_file):
-        sorted_term = sorted(self.keys())
-
-        #print the doc_term_path 
-        path_doctermpos = os.path.join(doc_term_pos_dir, docID)
-        with open(path_doctermpos, 'w') as f:
-            for term in sorted_term:
-                line = term 
-                for pos in self[term]: line += ',' + str(pos)
-                line += '\n'
-                f.write(line)
-           
-        #do not overwrite file, but add to existing file at the term_doc path 
-        #this we have to use the name of the file provided from the caller
-        path_termdoc = os.path.join(term_doc_dir, term_doc_file)
-        with open(path_termdoc, "a") as myfile:
-            myfile.write("appended text")
+    def add_pos(self, k, p):
+        if k in self:
+            self[k].append(p)
+        else:
+            self[k] = [p]       
+   
+    #print doc_term_pos csv (ordered)
+    #mode can either be write/w or append/a
+    def print_to_txt(self, path, mode, provide_keys = False):
+        if provide_keys:
+            with open(path, mode) as f:
+                for k in provide_keys:
+                    #no need to print the key itself
+                    #if the list is already provided
+                    #this is in the case of stopwords
+                    line = ''
+                    #if the item exist in the current record
+                    if k in self.keys():
+                        for p in self[k]: line += ',' + str(p)
+                    line += '\n'
+                    f.write(line)
+        else:
+            with open(path, mode) as f:
+                for k in sorted(self.keys()):
+                    line = k if isinstance(k, str) else str(k)
+                    for p in self[k]: line += ',' + str(p)
+                    line += '\n'
+                    f.write(line)
+        
+            
+            
         
         
         
@@ -173,23 +207,30 @@ def str_preprocess(string):
     return tokens
             
         
-        
-        
-        
-
 
 
 def doc_parsing(doc_name, doc_path):
-    doc_main = doc_term_index(docID = int(doc_name))
-    doc_stop_word = doc_term_index(docID = int(doc_name))
+    
+    global L_term_doc_main, L_term_doc_stopwords
+    global posting_main_count
+    
+    #local var
+    docID = int(doc_name)
+    doc_main = Mydict()
+    doc_stopwords = Mydict()
     itk = 0
     doctk = []
     Line_endpos = []
+    sw = [0]*len(stopwords)
+    
+    #PARSING LINE BY LINE
+    #record the position of last indexing tokens on the line
     with open(doc_path, 'r') as f:
         for line in f:
             tokens = str_preprocess(line.strip().lower())
             doctk.extend(tokens)
-            #count the position in line so that we can record the position per line
+            #count the position in line 
+            #so that we can record the position per line
             pos_count = 0
             for i in range(0, len(tokens)):
                 if tokens[i] in not_index:
@@ -209,7 +250,7 @@ def doc_parsing(doc_name, doc_path):
     with open(lp_path, 'w') as f:
         f.writelines(Line_endpos)
             
-            
+     #LEMMATISING       
     #pos tagging
     doctk_postag = nltk.pos_tag(doctk)
     #map tagging to accepted lematise arguments (n, v, adj, adv)
@@ -217,36 +258,157 @@ def doc_parsing(doc_name, doc_path):
     #lemmatise the important token only
     lemmatised_doctk = []
     for tk, tag in doctk_lemtag:
-        if tag != '' or tk != "'s":
-            lemmatised_doctk.append(lemmatiser.lemmatize(tk, tag))
-        else:
+        if tag == '' or tk == "'s":
             lemmatised_doctk.append(tk)
-    
-    pos = 0
-    for i, tk in enumerate(lemmatised_doctk):
-        if tokens[i] in not_index:
-            continue           
-        if tokens[i] == "'s" and i>0 and tokens[i-1] not in ("he", "she", "it"):
-            continue
-        pos += 1
-        if tk in stopwords:
-            doc_stopwords.add_pos(tk, pos)
         else:
-            doc_main.add_pos(tk, pos)        
-    return doc_main, doc_stopwords
+            lemmatised_doctk.append(lemmatiser.lemmatize(tk, tag))
+            
+    pos = 0
+    for i in range(0, len(lemmatised_doctk)):
+        tk = lemmatised_doctk[i]
+        if tk in not_index:
+            continue           
+        if tk == "'s" and i>0 and lemmatised_doctk[i-1] not in ("he", "she", "it"):
+            continue
+        if tk in ["'s", "'ve", "'ll", "'m", "'re", "'d", "'t"]:
+            tk = tk[1:]
+            
+        pos += 1
+        #updating stopwords
+        if tk in stopwords:
+            L_term_doc_stopwords.add_pos(tk, docID)
+            doc_stopwords.add_pos(tk, pos)
 
-
-
-
-#build inverted index
-Docs = os.listdir(doc_dir)
-Docs.sort(key = lambda x: int(x))
-for doc_name in Docs: 
-    doc_path = os.path.join(doc_dir, doc_name)
-    #creating a doc_term_index object
-    doc_main, doc_stopwords = doc_parsing(doc_name, doc_path)
+        else:
+        #updating mainwords
+            L_term_doc_main.add_pos(tk, docID)
+            doc_main.add_pos(tk, pos)
+            #proxy for block size
+            posting_main_count += 1
     
     
+    
+    #print the doc_term_position out      
+    doc_stopwords.print_to_txt(path = os.path.join(doc_term_pos_stopwords_dir, doc_name), 
+                               mode = 'w')
+    doc_main.print_to_txt(path = os.path.join(doc_term_pos_main_dir, doc_name), 
+                          mode = 'w')
+    return 
 
-#print inverted index
-      
+
+
+
+
+#BUILDING INVERTED INDEX USING SPIMI-Invert
+#STEP 1: PARSING DOCS and write to disk
+    L_term_doc_main = Mydict()
+    L_term_doc_stopwords = Mydict()
+
+    #only apply to main term
+    posting_main_count = 0 
+    posting_main_file = 0
+
+
+    #define procedure to check and write a block when it gets big
+    def block_main_write():
+        nonlocal posting_main_file
+        posting_main_file += 1
+        f_path = os.path.join(term_doc_main_dir, str(posting_main_file))
+        L_term_doc_main.print_to_txt(f_path, 'w')
+        L_term_doc_main.clear()
+        return
+    
+    def block_stopwords_write(file_num):
+        f_path = os.path.join(term_doc_stopwords_dir, str(file_num))
+        L_term_doc_stopwords.print_to_txt(f_path, 
+                                          'w', 
+                                          provide_keys=stopwords)
+        L_term_doc_stopwords.clear()
+        return
+
+
+    #PARSING THROUGH ALL DOC
+    Docs = os.listdir(doc_dir)
+    #to parse doc in ordered 
+    #so the docs are added in order
+    Docs.sort(key = lambda x: int(x))
+    for i, doc_name in enumerate(Docs): 
+        doc_path = os.path.join(doc_dir, doc_name)
+        #creating a doc_term_index object
+        doc_parsing(doc_name, doc_path)
+        if posting_main_count > 5000 or i == (len(Docs) - 1):
+            block_main_write()
+        if i in (99, 199, 299, 399, 499, 599, 699, 799, 899, 999, 1099, len(Docs) - 1) :
+            block_stopwords_write(i//100 + 1)
+
+
+   
+#STEP2: MERGING FILES OF MAIN TERMS- MERGE SORT
+def inverted_index_main():
+    global term_doc_main_dir
+    
+    #create a heap and dict
+    heap = []
+    dterm = []
+    
+    
+    #create a list of csv readers   
+    Lreader = []
+    Blocks = os.listdir(term_doc_main_dir)
+    Blocks = [int(b) for b in Blocks]
+    Blocks.sort()
+    Lreader = [[]]*(Blocks[-1]+1)
+    Lline = [[]]*(Blocks[-1]+1)
+    #open file and add reader to list
+    for b in Blocks:
+        path = os.path.join(term_doc_main_dir, str(b))
+        f = open(path, newline='\n')
+        Lreader[b] = csv.reader(f, delimiter = ',')
+    
+    #Merge sort
+
+    
+    while Blocks:
+        for b in Blocks:
+            Lline[b] = Lreader[b].__next__()
+            term = Lline[b][0]
+            posting = Lline[b][1:]
+            heapq.heappush(heap, (term, b))
+        
+        if heap:
+            
+            
+        
+            
+            
+            
+            
+        
+    
+            
+        
+        
+        
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#MAIN BODY
+
+
+
+
+
