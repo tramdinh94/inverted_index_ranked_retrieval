@@ -7,53 +7,19 @@ Created on Mon Nov  4 13:43:23 2024
 
 import sys
 import os 
-import gc
-
 import re
 import heapq
-import csv
-
 
 import nltk
-from nltk import word_tokenize, sent_tokenize
-from nltk import TreebankWordTokenizer
-from nltk import WordPunctTokenizer
 from nltk import RegexpTokenizer
-from nltk.corpus import stopwords
 
 
 
-#For setting path
-def create_dir(parent, child):
-    if parent:
-        new_dir = os.path.join(parent, child)
-    else:
-        new_dir = child      
-    #create dir if not existing
-    if not os.path.exists(new_dir):
-        os.makedirs(new_dir)
-    #return the path of new dir    
-    return new_dir    
 
+###___________PREPROCESSING___________________
+###_____INDEXING RULES___________________
 
-         
-
-
-###___________PREPROCESSING___________
-###___________tokenisation____________
-#pattern capture descimal number, number with comma, and number
-#pattern = r'[\w\d]+'
-
-pattern = r'\d+(?:\.\d+)'\
-    r'|\d+(?:\,\d{3})*'\
-    r'|(?:\'(?:s|ve|ll|m|re|d|t)\b)'\
-    r"|[.,?!']" \
-    r'|(?:[a-z]\.)+'\
-    r'|(?:[\w\d]+)'\
-
-my_tokeniser = RegexpTokenizer(pattern)
-
-
+#stopwords list (sorted) with id
 stopwords = ['a', 'about', 'above', 'after', 'again', 'against', 'all', 'almost', 'already', 'also', 'although', 'am', 'among', 'an', 'and', 'another', 'any', 'are', 'as', 'at', 
              'be', 'because', 'been', 'before', 'behind', 'being', 'below', 'beside', 'besides', 'between', 'beyond', 'both', 'but', 'by', 'can', 
              'd', 'did', 'do', 'does', 'doing', 'down', 'due', 'during', 'each', 'eg', 'elsewhere', 'etc', 'even', 'ever', 'ex', 'few', 'for', 'from', 'further', 'furthermore', 
@@ -67,37 +33,68 @@ stopwords = ['a', 'about', 'above', 'after', 'again', 'against', 'all', 'almost'
 
 #a dictionary for stopword and their id 
 #(which is their sorted index position)
-stopword_id = {stopwords[i]:i for i in range(0, len(stopwords))}
-for i, w in enumerate((stopwords)):
-    stopwords[w] = i
-      
+stopword_id = {sw:i for i, sw in enumerate(stopwords)}
 
-grammar_term = ["'", ".", ",","'s", "'ve", "'ll", "'m", "'re", "'d", "'t"]
+grammar_term = ["'", ".", ",", "?", "!","'s", "'ve", "'ll", "'m", "'re", "'d", "'t"]
+
 not_index = ["'", ".", ",", "?", "!"]
 
 
 
-#_______lemmatisation
+
+
+###___________TOKENISER____________
+#pattern capture descimal number, number with comma, and number
+#capture in order: number with decimal, number (optional comma), 
+#gramma contraction, punctuation, abbreviation, term(word and number)
+
+pattern = r'\d+(?:\.\d+)'\
+    r'|\d+(?:\,\d{3})*'\
+    r'|(?:\'(?:s|ve|ll|m|re|d|t)\b)'\
+    r"|[.,?!']" \
+    r'|(?:[a-z]\.)+'\
+    r'|(?:[\w\d]+)'\
+
+my_tokeniser = RegexpTokenizer(pattern)
+
+
+
+
+#_______LEMMATISER__________________________
 pos_lem_mapping = {'N': 'n', 'V': 'v', 'J':'a', 'R': 'r'}
 
 lemmatiser = nltk.WordNetLemmatizer()
 
 
-#with value of a key is a list 
-class Mydict(dict):
-    #adding positional index list of a term    
+
+#_______FUNCTION___________________________
+
+#For setting path
+def create_dir(parent, child):
+    if parent:
+        new_dir = os.path.join(parent, child)
+    else:
+        new_dir = child      
+    #create dir if not existing
+    if not os.path.exists(new_dir):
+        os.makedirs(new_dir)
+    #return the path of new dir    
+    return new_dir  
+
+
+def add_pos(d, k, p):
+    #adding posting or position to a dictionary (key = term)
     # k, p = term and individual posting (docID) if dict keys = terms
-    # k, P = doc and term position in a doc if dict keys = docIDs    
-    
-    def add_pos(self, k, p):
-        if k in self:
-            self[k].append(p)
-        else:
-            self[k] = [p]       
+    # k, P = doc and term position in a doc if dict keys = docIDs       
+    if k in d:
+        d[k].append(p)
+    else:
+        d[k] = [p]       
    
             
    
-
+#print pos (posting or position) from an item 
+#item can be list, set or dictionary
 def print_pos(items, path, mode, keys = False):
     if keys:
         with open(path, mode) as f:
@@ -114,20 +111,29 @@ def print_pos(items, path, mode, keys = False):
                     line = '\n'
                 f.write(line)
         
-        
+
+#print from a sorted list of (term, doc) tuple        
 def print_term_doc(L, path):
     with open(path, 'w') as f:
         for term, docID in L:
-            line = term + ',' + str(docID)+'\n'
+            line = term + ',' + str(docID) + '\n'
             f.write(line)
         
-
 
 
 def line_tokenise(line):
     #strip line, turn all into lower case, then add "EOF" to mark new line
     s = line.strip().lower() + ' EOL '
+    
+    #transform all n't to not
+    s = re.sub(r"(\b(?:are|could|do|does|did|has|have|is|must|should|would|was|were))n\'t\b", r' \1 not ', s)
+    s = re.sub(r"\b(?:ai)n\'t\b", ' are not ', s)
+    s = re.sub(r"\b(?:ca)n\'t\b", ' can not ', s)
+    s = re.sub(r"\b(?:sha)n\'t\b", ' shall not ', s)
+    s = re.sub(r"\b(?:wo)n\'t\b", ' will not ', s)
+    
     tokens = my_tokeniser.tokenize(s)    
+    
     return tokens
 
 
@@ -137,10 +143,9 @@ def index_term(tk, tag):
     if tk in not_index:
         return False
        
-    # if token =  's 
-    # can be either verb (index) or possesive (not index)
-    elif tk[0] == "'s":
-        if tk[1] == 'POS': 
+    # if token = 's , it can be either verb (index) or possesive (not index)
+    elif tk == "'s":
+        if tag == 'POS': 
             return False
         else:
             term = 's'
@@ -160,8 +165,7 @@ def index_term(tk, tag):
             term = tk.replace(',', '')  
             
     elif tag[0] in ('N', 'V', "J", 'R'):
-        lw = lemmatiser.lemmatize(tk, pos_lem_mapping[tag[0]])
-        term = lw
+        term = lemmatiser.lemmatize(tk, pos_lem_mapping[tag[0]])
         
     else:
         term = tk
@@ -169,13 +173,13 @@ def index_term(tk, tag):
     return term
 
 
+#doc ID is provided as interger
 def doc_parsing(docID, doc_path):  
     global stopwords
-    nonlocal posting_sw
-    nonlocal posting_term
+    global doc_term_position_dir, doc_sw_position_dir
     
-    term_pos = Mydict()
-    sw_pos = Mydict()
+    term_pos = dict()
+    sw_pos = dict()
     #PARSING LINE BY LINE
     #record the position of last indexing tokens on the line
     with open(doc_path, 'r') as f:
@@ -185,7 +189,7 @@ def doc_parsing(docID, doc_path):
     line_endposition = [0 for i in range(0, no_line)]  
     
     #flatten the list of tokens
-    tokens = [item[i] for item in tokens for i in len(item)]
+    tokens = [item[i] for item in tokens for i in range(0,len(item))]
       
     #pos_tag, lemmatise, and index
     tokens_tag = nltk.pos_tag(tokens)
@@ -198,17 +202,17 @@ def doc_parsing(docID, doc_path):
             if i > 0 and tokens_tag[i-1] != 'EOL': 
                 line_endposition[line] = position
             line += 1
-            continue
+            
         else:
             term = index_term(tk[0], tk[1])
             if term: 
                 position += 1
                 if term in stopwords:
-                    sw_pos.add_pos(term, position)
+                    add_pos(sw_pos, term, position)
                     sw_id = stopword_id[term]
-                    posting_sw[sw_id].append(int(docID))
+                    posting_sw[sw_id].append(docID)
                 else:
-                    term_pos.add_pos(term, position)
+                    add_pos(term_pos, term, position)
                     #posting_term.add_pos(term, int(docID))
             
     sorted_term = sorted(term_pos.keys())
@@ -216,54 +220,56 @@ def doc_parsing(docID, doc_path):
     #include it in the temp vocab
     #print it out
     print_pos(term_pos,  
-              path = os.path.join(doc_term_position_dir, docID), 
+              path = os.path.join(doc_term_position_dir, str(docID)), 
               mode = 'w',
               keys = sorted_term)
     
     print_pos(sw_pos,
-              path = os.path.join(doc_sw_position_dir, docID),
+              path = os.path.join(doc_sw_position_dir, str(docID)),
               mode = 'w',
               keys = stopwords)
         
-    return [(t, int(docID)) for t in sorted_term]
+    return [(t, docID) for t in sorted_term]
             
      
         
-     
-def data_extract():
+#parsing all doc and sava data to disk     
+def doc_to_disk():
     posting_sw = []*len(stopwords)
-    #posting_term = Mydict()
+    #posting_term = dict()
     term_doc = []*8
     
     #PARSING THROUGH ALL DOC
     Docs = os.listdir(doc_dir)
-    #to parse doc in ordered 
-    #so the docs are added in order
+    
+    #to parse doc in ordered so the docs are added in order
     Docs.sort(key = lambda x: int(x))
+    
     for i, docID in enumerate(Docs): 
         #term_doc block
         j = i % 8
         doc_path = os.path.join(doc_dir, docID)
-        sorted_term_doc = doc_parsing(docID, doc_path)               
-        term_doc[j] = sorted_term_doc
+        #adding sorted list of (term, doc) to block
+        term_doc[j] = doc_parsing(int(docID), doc_path)               
+
         
         #after parsing every 8 documents
-        #flush out blocks of data
-        if j == 7:
+        #or parsing the last documents
+        #heap merge sort and flush out blocks to disk
+        if j == 7 or i == len(Docs) - 1:
             #flush term-doc out to disk
             term_doc = heapq.merge(term_doc[0], term_doc[1], term_doc[2], term_doc[3], 
                                    term_doc[4], term_doc[5], term_doc[6], term_doc[7])
             print_term_doc(term_doc, 
-                           path = os.path.join(term_doc_dir, str(i//8)))
+                           path = os.path.join(term_doc_dir, str(i//8 + 1)))
         
             term_doc = []*8
             
             #flush stopwords out too
             print_pos(posting_sw, 
                        keys = stopwords, 
-                       path = os.path.join(sw_doc_dir, str(i//8)),
-                       mode = 'w',
-                       keys= False)
+                       path = os.path.join(sw_doc_dir, str(i//8 + 1)),
+                       mode = 'w')
             
             posting_sw = []*len(stopwords)
     
@@ -370,7 +376,9 @@ def external_merge_oneround(source_folder, files, final_folder = False):
             cur_line += s
         line_block.append(cur_line + '\n')
         
-        if len(line_block) == 64 or iline ==  len(stopwords) - 1:
+        #fush out every 32 = 2**5 lines
+        #this is so that the dynamic array does not have to resize more than 5 times
+        if len(line_block) == 32 or iline ==  len(stopwords) - 1:
             F_result_name = iline if final_folder else 'temp'
             F_result_path = os.path.join(dest_folder, F_result_name)
     
@@ -390,7 +398,7 @@ def external_merge_oneround(source_folder, files, final_folder = False):
     
 
 #using the appropriate merge function to build inverted index        
-def external_merging(source_folder, final_folder, max_num_run, mergeFunc):    
+def external_merge_all(source_folder, final_folder, max_num_run, mergeFunc):    
     Files = os.listdir(source_folder)
     Files.sort(key= lambda x: int(x))
     
@@ -473,21 +481,21 @@ with open(os.path.join(index_dir, "raw_documents.txt"), 'w') as f:
 #__3___BUILDING INVERTED INDEX STEP BY STEP
 
 #__3a__extract data (parsing doc one by one, flush results out to files)
-data_extract()
+doc_to_disk()
 
 #__3b__external merge sort to build inverted index for main terms 
 
 #for main terms - have to sort
-external_merging(source_folder = term_doc_dir,
-                 final_folder = index_term_dir,
-                 max_num_run = 5,
-                 mergeFunc = external_merge_sort_oneround)
+external_merge_all(source_folder = term_doc_dir,
+                   final_folder = index_term_dir,
+                   max_num_run = 5,
+                   mergeFunc = external_merge_sort_oneround)
 
 #for stopwords - no need to sort (because input is alreadt sorted)
-external_merging(source_folder = sw_doc_dir, 
-                 final_folder = index_sw_dir, 
-                 max_num_run = 5, 
-                 mergeFunc = external_merge_oneround)
+external_merge_all(source_folder = sw_doc_dir, 
+                   final_folder = index_sw_dir, 
+                   max_num_run = 5, 
+                   mergeFunc = external_merge_oneround)
 
 
 
