@@ -44,9 +44,8 @@ stopword_id = {sw:i for i, sw in enumerate(stopwords)}
 
 grammar_term = ["'", ".", ",", "?", "!","'s", "'ve", "'ll", "'m", "'re", "'d", "'t"]
 
-not_index = ["'", ".", "?", "!"]
 
-
+not_index = ["'", ".", "?", "!", ","]
 
 
 
