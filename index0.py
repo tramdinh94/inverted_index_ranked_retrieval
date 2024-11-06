@@ -324,7 +324,7 @@ def merge_sort_group_print(vocab):
     global term_posting_dir
     #how posting lists will be print 
     #according to the first character of the terms
-    firstchar = ['0123456789','ab','cd','efgh','ijkl','mnopq','rs','tuvwxyz']
+    firstchar = '0123456789abcdefghijklmnopqrstuvwxyz'
     #block index
     i = 0
     curblock = []
