@@ -107,31 +107,73 @@ def create_dir(parent, child):
 
 
 
-def add_pos(d, k, p, duplicate_p = False):
+def add_position(d, k, p):
     #adding posting or position to a dictionary (key = term)
     # k, p = term and individual posting (docID) if dict keys = terms
     # k, P = doc and term position in a doc if dict keys = docIDs       
     if k in d:
-        if duplicate_p == False or d[k][-1] != p:  
-            d[k].append(p)
+        d[k].append(p)
     else:
         d[k] = [p]       
    
+
+
+def add_posting(d, k, p, word_type):
+    #adding posting or position to a dictionary (key = term)
+    # k, p = term and individual posting (docID) if dict keys = terms
+    # k, P = doc and term position in a doc if dict keys = docIDs      
+    if word_type == 'term':  
+        if k in d:
+            d[k][0] += 1
+            if d[k][1][-1] != p:  
+                d[k][1].append(p)
+        else:
+            d[k] = [1, [p]] 
+    
+    elif word_type == 'sw': #if it is just stopwords - no need to have frequency
+        if k not in d:
+            d[k] = [p]
+        elif d[k][-1] != p:
+            d[k] = [p]
+
             
    
 #print pos (posting or position) from an item 
 #item can be list, set or dictionary
-def print_pos(items, path, mode, keys, print_blank = False):
+def print_position(items, path, mode, keys):
     with open(path, mode) as f:
         for k in keys:
-            if k in items:
-                line = k if isinstance(k, str) else str(k)
-                line += ',' + ','.join([str(p) for p in items[k]]) + '\n' 
-                f.write(line)
-            elif print_blank: 
-                line = '\n'
+            line = k + ',' + ','.join([str(p) for p in items[k]]) + '\n' 
+            f.write(line)
+          
+
+#print both term and its number of occurence
+def print_vocab(d, path, mode, keys):
+    with open(path, mode) as f:
+        for k in keys:
+            line = k + ',' + str(d[k][0]) + '\n'
+            f.write(line)
+            
+
+
+#print pos (posting or position) from an item 
+#item can be list, set or dictionary
+def print_posting(d, path, mode, keys, word_type):    
+    if word_type == 'term':
+        with open(path, mode) as f:
+            for k in keys:
+                line = k +  ',' + ','.join([str(p) for p in d[k][1]]) + '\n' 
                 f.write(line)
     
+    elif word_type == 'sw':
+        with open(path, mode) as f:
+            for k in keys:
+                line = k +  ',' + ','.join([str(p) for p in d[k]]) + '\n' 
+                f.write(line)
+        
+
+
+
 
 
 def line_tokenise(line):
@@ -268,26 +310,25 @@ def doc_parsing(docID, doc_path):
             if term: 
                 position += 1
                 if term in stopwords:
-                    sw_id = stopword_id[term]
-                    add_pos(sw_pos, term, position)
-                    add_pos(posting_sw, sw_id, docID, duplicate_p =True)
+                    add_position(sw_pos, term, position)
+                    add_posting(posting_sw, term, docID, word_type='sw')
                 else:
-                    add_pos(term_pos, term, position)
-                    add_pos(posting_term, term, docID, duplicate_p =True)
+                    add_position(term_pos, term, position)
+                    add_posting(posting_term, term, docID, word_type='term')
             
     sorted_terms = sorted(term_pos.keys())
     
 
     #print it out
-    print_pos(term_pos,  
-              path = os.path.join(doc_term_position_dir, str(docID)), 
-              mode = 'w',
-              keys = sorted_terms)
+    print_position(term_pos,  
+                   path = os.path.join(doc_term_position_dir, str(docID)), 
+                   mode = 'w',
+                   keys = sorted_terms)
     
-    print_pos(sw_pos,
-              path = os.path.join(doc_sw_position_dir, str(docID)),
-              mode = 'w',
-              keys = stopwords)
+    print_position(sw_pos,
+                   path = os.path.join(doc_sw_position_dir, str(docID)),
+                   mode = 'w',
+                   keys = [sw for sw in stopwords if sw in sw_pos.keys()])
        
     return sorted_terms
             
@@ -324,7 +365,7 @@ def merge_sort_group_print(vocab):
     global term_posting_dir
     #how posting lists will be print 
     #according to the first character of the terms
-    firstchar = ['0123456789','ab','cd','efgh','ijkl','mnopq','rs','tuvwxyz']
+    firstchar = '0123456789abcdefghijklmnopqrstuvwxyz'
     #block index
     i = 0
     curblock = []
@@ -338,10 +379,15 @@ def merge_sort_group_print(vocab):
                 #belong to other group
                 #print the current group
                 if curblock: #if not empty
-                    print_pos(items = posting_term, 
-                              path = os.path.join(term_posting_dir, firstchar[i]), 
-                              mode = 'w', 
-                              keys = curblock)                
+                    print_posting(posting_term, 
+                                  path = os.path.join(term_posting_dir, firstchar[i]), 
+                                  mode = 'w', 
+                                  keys = curblock,
+                                  word_type='term')    
+                    print_vocab(posting_term, 
+                                path = os.path.join(vocab_dir, firstchar[i]), 
+                                mode = 'w', 
+                                keys = curblock)
                 curblock = []
                 
                 #find the next first char group
@@ -351,11 +397,17 @@ def merge_sort_group_print(vocab):
                 curblock.append(term)
             
             last = term
+    
     if curblock:
-        print_pos(items = posting_term, 
-                  path = os.path.join(term_posting_dir, firstchar[i]), 
-                  mode = 'w', 
-                  keys = curblock)   
+        print_posting(posting_term, 
+                      path = os.path.join(term_posting_dir, firstchar[i]), 
+                      mode = 'w', 
+                      keys = curblock,
+                      word_type='term')
+        print_vocab(posting_term, 
+                    path = os.path.join(vocab_dir, firstchar[i]), 
+                    mode = 'w', 
+                    keys = curblock)
 
 
 
@@ -393,7 +445,9 @@ doc_sw_position_dir = create_dir(index_dir, "doc_sw_position")
 term_posting_dir = create_dir(index_dir, "term_doc")
 sw_posting_dir = create_dir(index_dir, "sw_doc")
 
-      
+
+#FOLDER FOR VOCAB
+vocab_dir = create_dir(index_dir, 'vocabulary')      
 
 #first, write the path of doc
 with open(os.path.join(index_dir, "raw_documents.txt"), 'w') as f:
@@ -416,11 +470,11 @@ vocab = doc_to_vocab_posting()
 merge_sort_group_print(vocab)
 
 #print stopwords-postings
-print_pos(posting_sw, 
-          path = os.path.join(sw_posting_dir, '1'), 
-          mode = 'w', 
-          keys = range(0, len(stopwords)), 
-          print_blank=True)
+print_posting(posting_sw, 
+              path = os.path.join(sw_posting_dir, '1'), 
+              mode = 'w', 
+              keys = [sw for sw in stopwords if sw in posting_sw.keys()], 
+              word_type = 'sw')
 
 
 #check time            
