@@ -426,12 +426,9 @@ def merge_sort_group_print(vocab):
 #___________MAIN BODY______________________
 
 #___1___GETTING PROVIDED PATH FOR DATA AND INDEX
-#doc_dir = sys.argv[1]
-#index_folder = sys.argv[2]
-doc_dir = 'data'
-index_folder = 'my_index'
 
-index_block_size = 300
+doc_dir = sys.argv[1]
+index_folder = sys.argv[2]
 
 
 
