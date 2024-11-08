@@ -23,38 +23,13 @@ from special_vocab import stopwords
 from special_vocab import irr_inflection_len3, irr_inflection, irr_plural
 
 
-index_dir = 'my_index'
-vocab_dir = os.path.join(index_dir, 'vocabulary')
-
 
 wnlemmatise = nltk.WordNetLemmatizer().lemmatize
 
+#test data: sumf = 157796 word occurence
 
 
 
-def loading_vocab(vocab_dir, vocab_type):
-    if vocab_type == 'alphabet':
-        firstchars = 'abcdefghijklmnopqrstuvwxyz' 
-    
-    elif vocab_type == 'digits':
-        firstchars = '0123456789'
-
-    vocab = {char:None for char in firstchars }
-    
-    all_files = os.listdir(vocab_dir)
-    loading_files = [fn for fn in all_files if fn in vocab]
-    
-    for file in loading_files:
-        path = os.path.join(vocab_dir, file)
-        d = dict()
-            
-        with open(path, 'r') as f:
-            for line in f:
-                item = line.strip().split(sep = ',')
-                d[item[0]] = int(item[1])
-            
-        vocab[file] = d
-    return vocab
         
 
 
@@ -164,8 +139,11 @@ def quick_lemmatise(w):
     
 
 
-
-def edit_candidate_set(original_word, max_edit, vocab, desperate = False):
+#inputs: query_word, maximum distance edit, vocab
+#output: a dictionary 
+    #key: candidate word (exists in vocab)
+    #value: tuple (min_edit_distance, frequency)
+def correct_candidate_set(query_word, max_edit, vocab, desperate):
 
     candidates = dict()
     permu = set()
@@ -176,11 +154,8 @@ def edit_candidate_set(original_word, max_edit, vocab, desperate = False):
         #delete
             #delete, replace
         #replace
-            #replace   
-
+            #replace    
     
-    
-
     def add_to_candidates(s, edit):
         if s not in candidates or edit == 1:
             candidates[s]  =  (edit, vocab[s[0]][s])
@@ -226,7 +201,7 @@ def edit_candidate_set(original_word, max_edit, vocab, desperate = False):
         #then cannot delete at i-1, i, i+1
         #because it will overlap with 1-step or 2-step replace
         nonlocal max_edit
-        nonlocal original_word
+        nonlocal query_word
         
         if len(s) <= 1:
             return
@@ -239,7 +214,7 @@ def edit_candidate_set(original_word, max_edit, vocab, desperate = False):
             
         for i in range_i: 
             new = s[:i] + s[i+1:]
-            if new != original_word:
+            if new != query_word:
                 check_edit_result(new, edit)
                 #if still at 1-distance edit
                 if edit < max_edit:
@@ -261,33 +236,108 @@ def edit_candidate_set(original_word, max_edit, vocab, desperate = False):
             for newchar in 'abcdefghijklmnopqrstuvwxyz':
                 if newchar != s[i]:
                     new = s[:i] + newchar + s[i+1:]
-                    if new != original_word:
+                    if new != query_word:
                         check_edit_result(new, edit)
                         #if still at 1-distance edit
                         if edit < max_edit:
                             replace_1char(new, edit + 1, exclude = i)
     
     
-    insert_1char(original_word, edit=1)
-    delete_1char(original_word, edit=1)
-    replace_1char(original_word, edit=1)
+    insert_1char(query_word, edit=1)
+    delete_1char(query_word, edit=1)
+    replace_1char(query_word, edit=1)
     
     return candidates
 
 
 
-vocab_alphabet = loading_vocab(vocab_dir, 'alphabet')
 
+######______NOW THE MAIN PART____________________________________________
+#####_______NEED TO OUTPUT LIST OF SPELLING CORRECTION CANDIDATES_________
+####________RANKEDDDDD___________________________________________________
+#produce a rank number proportional to probability that a word is correct
+#given data (actual error)
+#a very very very rudimental error model
+#because I am so dead don't wanna code anymore
 
+#very LAZY ASSUMPTIONs:
+    # P(word) = frequency in vocab/all word frequency in vocab 
+        # this set of data has in total 157796 term occurences
+        # may be should just calculate this when indexing
+        # cause indexing has 60 seconds to run
+    # given a correct word, probability of error is P(error)
+        # which, honestly in this case depends on the professor
+        # since 26 marks is for query with no error, 10 with obvious error, 4 for not obvious error
+        # and not all words in query with errors would have error
+        # I assume:
+            # P(correct query) = 0.65 ~ 26/40            
+            # P(obviously wrong query) = 0.25  ~ 10/40 
+            # P(not obviously wrong query ) = 0.1 = 4/10
+            
+          
+    #given any error (obvious or not), there is 80% chance an error within 1-edit distance, 
+          #and 20% chance in 2 edit distance
+    
+    #now, I am lazy, so won't calculate the possibility of error at character level
+    
+    #so: P(query|correct) takes the following form
+        # if query == original (means edit = 0)
+            # P(query|original) = 0.65  (really, can take it as probability of edit = 0)
+            
+        # if query is obviously wrong (not in vocab)
+            # P(obviously_wrong_query|original) = 0.25*P(edit-distance)
+            
+        # if query is not obviously wrong (in vocab)    
+            # P(not_obviously_wrong_query|original) = 0.1*P(edit-distance)
 
+      
+    #so: the non-normalise posterior probability is:
+        # P(original|query) ~ P(query|original) * P(original)
 
-#testing
+#anyways, bayesian interpretation is that probability reflect our belief about stuff
+#I don't know much, so this is the best I can do with my belief
 
-ps = edit_candidate_set('bark', 2, vocab_alphabet, desperate= True)
+def P_correct(Pw, edit, obvious):
+    
+    if edit == 0:   #means query = original (q = w)
+        return 0.65*Pw
+        
+    else:
+        P_error = 0.25 if obvious else 0.1
+        P_edit = 0.8 if edit == 1 else 0.2
+        return Pw*P_error*P_edit
+    
+    
 
-
-
-
-
-
-
+def main(q, vocab, sumf, max_edit = 2):
+    if q in vocab[q[0]]:
+        obvious = False
+    else:
+        obvious = True
+    
+    if obvious: 
+        desperate = True
+    else:
+        desperate = False
+        
+    candidates = correct_candidate_set(q, max_edit, vocab, desperate)
+    L = []
+    for w in candidates:
+        edit = candidates[w][0]
+        Pw = candidates[w][1]/sumf
+        L.append((w, P_correct(Pw, edit, obvious)))
+        
+    L.sort(key = lambda x: x[1], reverse=True)
+    
+    if obvious:
+        return L[0]
+    else:
+        Pq = vocab[q[0]][q]/sumf
+        P_no_error = P_correct(Pq, 0, obvious)  #0 edit
+        result = [x for x in L if x[1] > P_no_error]
+        if result:
+            return P_no_error, result
+        else:
+            return False
+            
+    
