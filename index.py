@@ -7,8 +7,8 @@ Created on Mon Nov  4 13:43:23 2024
 
 
 #to check time
-import time
-start_time = time.time()
+#import time
+#start_time = time.time()
 
 
 import sys
@@ -292,7 +292,7 @@ def doc_parsing(docID, doc_path):
             if not line: 
                 continue
             line_tk = line_tokenise(line)         
-
+            change = False
             #count position in each line
             for i, tk in enumerate(line_tk):
                 tokens.append(tk)
@@ -301,9 +301,11 @@ def doc_parsing(docID, doc_path):
                 elif tk == "'s" and i > 0 and line_tk[i-1] not in ('he', 'she', 'it'):
                     continue
                 p += 1
+                change = True
             
             #get line and end position
-            L_line.append(str(p)+ ',' + line + '\n')   
+            if change: 
+                L_line.append(str(p)+ ',' + line)   
             
                 
     with open(os.path.join(doc_line_dir, str(docID)), 'w') as f:
@@ -502,7 +504,7 @@ with open(os.path.join(index_dir, "reference.txt"), 'w') as f:
 
 
 #check time            
-print("running time to this point is %s seconds" % (time.time() - start_time))        
+#print("running time to this point is %s seconds" % (time.time() - start_time))        
         
  
       
