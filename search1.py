@@ -14,9 +14,15 @@ import sys
 import os 
 import re
 import heapq
+import nltk 
+import itertools
 
-import nltk
 from nltk import RegexpTokenizer
+from nltk import WordNetLemmatizer
+
+#my own file
+from spelling_correction import spelling_correction
+from special_vocab import stopwords
 
 
 
@@ -24,17 +30,6 @@ from nltk import RegexpTokenizer
 
 ###___________PREPROCESSING___________________
 ###_____INDEXING RULES___________________
-
-#stopwords list (sorted) with id
-stopwords = ['a', 'about', 'above', 'after', 'again', 'against', 'all', 'almost', 'already', 'along','another', 'around', 'also', 'although', 'am', 'among', 'an', 'and', 'another', 'any', 'are', 'as', 'at', 
-             'be', 'because', 'before', 'behind', 'below', 'beside', 'besides', 'between', 'beyond', 'both', 'but', 'by', 'can', 'co', 'corp',
-             'd', 'do', 'down', 'due', 'during', 'each', 'eg', 'elsewhere', 'etc', 'even', 'ever', 'ex', 'few', 'for', 'from', 'further', 'furthermore', 
-             'had', 'have', 'he', 'hence', 'her', 'here', 'hers', 'herself', 'him', 'himself', 'his', 'how', 'however',
-             'i', 'ie', 'if', 'in',  'inc',  'spite','into', 'it', 'its', 'itself', 'just','less', 'll', 'ltd' , 'm', 'may', 'me', 'meanwhile', 'might', 'more', 'moreover', 'most', 'my', 'myself', 
-             'neither', 'no', 'nor', 'not', 'now', 'o', 'of', 'off', 'on', 'once', 'only', 'or', 'other', 'our', 'ours', 'ourselves', 'out', 'over', 'overall', 'own', 're', 
-             's', 'same', 'several','she', 'so', 'some', 'such', 't', 'than', 'that', 'the', 'their', 'theirs', 'them', 'themselves', 'then', 'there', 'therefore', 'these', 'they', 
-             'this', 'those', 'through', 'to', 'too', 'under', 'until', 'up', 've', 'very', 'via', 'we', 'what', 'when', 'where', 'which', 'while', 'who', 'whom', 'why', 
-             'will', 'with', 'y', 'yet', 'you', 'your', 'yours', 'yourself', 'yourselves']         
 
 
 #a dictionary for stopword and their id 
@@ -63,11 +58,33 @@ pos_lem_mapping = {'NN': 'n',       #just noun - but might have gerund
                    'RBS': 'r',      #RBR: adverb, comparative
                    'RBR':'r'}       #RBS: adverb, superlative
 
-lemmatiser = nltk.WordNetLemmatizer()
+wnlemmatise = WordNetLemmatizer().lemmatize
 
 
 
+def loading_vocab(vocab_dir, vocab_type):
+    if vocab_type == 'alphabet':
+        firstchars = 'abcdefghijklmnopqrstuvwxyz' 
+    
+    elif vocab_type == 'digits':
+        firstchars = '0123456789'
 
+    vocab = {char:None for char in firstchars }
+    
+    all_files = os.listdir(vocab_dir)
+    loading_files = [fn for fn in all_files if fn in vocab]
+    
+    for file in loading_files:
+        path = os.path.join(vocab_dir, file)
+        d = dict()
+            
+        with open(path, 'r') as f:
+            for line in f:
+                item = line.strip().split(sep = ',')
+                d[item[0]] = int(item[1])
+            
+        vocab[file] = d
+    return vocab
 
 
 
@@ -75,89 +92,63 @@ lemmatiser = nltk.WordNetLemmatizer()
 
 #FUNCTIONS
 
-def lemmatise_no_tag(w):
-    pass
-
-
-
+def word_preprocess(w):
+    if w[0] in '0123456789':
+        return w.replace(',', '')
     
-    
-def retrieve_term_postings_one(w):
+    for tag in 'nvar':
+        lem = wnlemmatise(w, 'tag')
+        if lem != w:
+            return lem
+    return w
+
+
+def query_correction(query):
+    L = []
+    for q in query:
+        if q[0] in '0123456789':
+            L.append(q)
+        elif q not in vocab_alpha[q[0]]:
+            new = spelling_correction(q, vocab_alpha, sumf, obvious = True)
+            L.append(new)
+        else:
+            candidates = spelling_correction(q, vocab_alpha, sumf, obvious = False)
+            if not candidates:
+                L.append(q)
+            else:
+                L.append(candidates)
+    return L
+                
+     
+
+
+def retrieve_postings(w):
     global term_posting_dir
+    global sw_posting_dir
     
-    firstchar = w[0]
-    filepath = os.path.join(term_posting_dir, firstchar)
-    
-    found = False
-    
+    if w in stopwords:
+        filepath = os.path.join(sw_posting_dir, "1")
+    else: 
+        firstchar = w[0]
+        filepath = os.path.join(term_posting_dir, firstchar)
+
     with open(filepath, 'r') as f:
         for line in f:
             cur_indexed_term = line[: line.find(',')] 
             if cur_indexed_term == 'w':
                 postings = line.split(sep = ',')[1:]
                 found = [int(p) for p in postings]
-                break
-            elif cur_indexed_term > 'w':
-                break
     
-    return found
+    return found    
     
 
 
-#if there are multiple term starting with same char
-#assume that word is sorted
-def retrieve_term_postings_multiple(word_list):
-    global term_posting_dir
-    
-    result = dict()
-    
-    firstchar = word_list[0][0]
-    filepath = os.path.join(term_posting_dir, firstchar)
-    
-    #to track word
-    i = 0
-    curword = word_list[i]
-    
-    with open(filepath, 'r') as f:
-        for line in f:
-            cur_indexed_term = line[: line.find(',')] 
-            if cur_indexed_term < curword:
-                continue
-            else: 
-                if cur_indexed_term == curword:
-                    postings = line.strip().split(sep = ',')[1:]
-                    result[curword] = [int(p) for p in postings]
-                i += 1
-                if i < len(word_list):
-                    curword = word_list[i]
-                else: 
-                    break
-    return result
 
-
-
-    
-
-def retrieve_sw_postings(word_list):
-    global sw_posting_dir
-    pass
-
-
-
-
-
-def retrieve_postings(sorted_query):
-    pass
-
-
-
-
-def correct_spelling(word_list):
-    pass
-  
 
 #results will naturally be ordered by docID already
-def common_docs(all_posting_lists):   
+def common_docs(query):
+    all_posting_lists = [retrieve_postings(w) for w in query]
+    
     results = []
     #number of query terms
     n = len(all_posting_lists)
@@ -180,7 +171,7 @@ def common_docs(all_posting_lists):
 
 
 
-def retrieve_positions(docID, w):
+def retrieve_positions(w, docID):
     global doc_term_position_dir
     global doc_sw_position_dir
         
@@ -201,46 +192,106 @@ def retrieve_positions(docID, w):
                 
 
 
-#calculate proximity distance between 2 terms in a doc
-#p1 is position-list of word 1
-#p2 is position-list of word 2
-def proximity_distance(doc, p1, p2):
-    pass
+#calculate proximity distance 
+#and number of right orders
+def min_sum_distance(docID, query):
+    
+    n = len(query)
+    
+    LP = [retrieve_positions(w, docID) for w in query]
+    
+    if n == 1:
+        return 0, 0, LP[0][0]
+    
+    position_combinations = list(itertools.product(*LP))
+    
+    
+    min_dis =  65535
+    
+    for c in position_combinations:
+        sum_dis = 0
+        ordered = 0
+        for i in range(0, n-1):
+            d = c[i+1] - c[i]
+            sum_dis += abs(d)
+            if d > 0:
+                ordered += 1
+        #update everything if find new min
+        if sum_dis < min_dis:
+            min_dis = sum_dis
+            min_c = c
+            min_ordered = ordered 
+        
+        #if cannot improve distance
+        #but can increase the number of ordered pairs
+        #or the combination is at higher lines
+        if sum_dis == min_dis:
+            if (ordered > min_ordered) or (ordered == min_ordered and min(c) < min(min_c)):
+                min_c = c
+                min_ordered = ordered
+        
+            
+    return min_dis, min_ordered, min_c
+
+
+
+
+def processed_query(original_query, print_line):
+    
+    query_updated = query_correction(original_query)
+    
+    query_combination = list(itertools.product(*query_updated))
+
+    ranked_docs = []
+    
+    for query in query_combination:
+        docs = common_docs(query)
+        for docID in docs:
+            min_dis, ordered, c = min_sum_distance(docID, query)
+            ranked_docs.append( (docID, min_dis, ordered, c))
+            
+    
+    ranked_docs.sort(key = lambda x: (x[1], - x[2], x[0] ))
+    
+    return ranked_docs
+        
+        
+#print a doc 
+#given c = the best combination of positions    
+def print_lines(docID, position_combination):
+    global doc_dir
+    
+    Lines = []
+    c = sorted(position_combination)
+    path = os.path.join(doc_dir, str(docID))
+    
+    with open(path, 'r') as f:
+        
+    
+    
+    
+
     
 
 
-#query must not be sorted
-def min_sum_distance(doc, query):
-    wp = {w: retrieve_positions(docID, w) for w in query}
-    #do some calculation
-    pass
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-#______MAIN__________
+# =============================================================================
+#____MAIN____________
 
 #___1___PATH_________
 
-# =============================================================================
-# index_dir = sys.argv[1]
-# with open(os.path.join(index_dir, 'raw_documents.txt'), 'r') as f:
-#     doc_dir = f.readline().strip()
-# =============================================================================
-    
+#index_dir = sys.argv[1]
 
-doc_dir = 'data'
 index_dir = 'my_index'
+
+with open(os.path.join(index_dir, 'reference.txt'), 'r') as f:
+    L = [line.strip() for line in f]
+    doc_dir = L[0]
+    sumf = int(L[1])
+   
+
+
 
 #to store the end position of each doc's line
 doc_line_pos_dir = os.path.join(index_dir, "doc_line_endposition")
@@ -253,34 +304,12 @@ doc_sw_position_dir = os.path.join(index_dir, "doc_sw_position")
 term_posting_dir = os.path.join(index_dir, "term_doc")
 sw_posting_dir = os.path.join(index_dir, "sw_doc")
      
+#vocab
+vocab_dir = os.path.join(index_dir, 'vocabulary')
 
 
 
-
-
-
-
-
-def process_query(query, print_line):
-    
-    posting_lists = retrieve_postings(sorted(query))
-    
-    #if some terms are not found - have to do correct spelling
-    # put the results back to posting_lists
-    
-    not_found =  set(query) - set(posting_lists.keys()) 
-    if not_found:
-        pass
-        
-    found_doc = common_docs([posting_lists[w] for w in posting_lists ])
-        
-    doc_distance = {docID: distance(docID, query) for docID in found_doc}  
-    
-    
-    pass
-
-
-
+vocab_alpha = loading_vocab(vocab_dir, 'alphabet')
 
 
 
@@ -297,13 +326,18 @@ while True:
     query = query.strip().lower().split()
     if query[0] == '>':
         query = query[1:]
-        print_line = True
+        pain_in_the_ass = True
     else:
-        print_line = False
+        pain_in_the_ass = False
     
     #no sorting query
-    query = [lemmatise_no_tag(w) for w in query]    
+    query = [word_preprocess(w) for w in query]    
     
+    ranked_docs = processed_query(query)
     
-    process_query(query, print_line)
+    for item in ranked_docs:
+        print(item[0])
+        if pain_in_the_ass:
+            print_lines(item[0], item[-1])
     
+  

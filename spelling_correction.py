@@ -309,18 +309,16 @@ def P_correct(Pw, edit, obvious):
     
     
 
-def main(q, vocab, sumf, max_edit = 2):
-    if q in vocab[q[0]]:
-        obvious = False
-    else:
-        obvious = True
-    
+def spelling_correction(q, vocab, sumf, obvious, max_edit = 2):
     if obvious: 
         desperate = True
     else:
         desperate = False
         
     candidates = correct_candidate_set(q, max_edit, vocab, desperate)
+    if not candidates: 
+        return False
+    
     L = []
     for w in candidates:
         edit = candidates[w][0]
@@ -330,11 +328,11 @@ def main(q, vocab, sumf, max_edit = 2):
     L.sort(key = lambda x: x[1], reverse=True)
     
     if obvious:
-        return L[0]
+        return L[0][0]
     else:
         Pq = vocab[q[0]][q]/sumf
         P_no_error = P_correct(Pq, 0, obvious)  #0 edit
-        result = [x for x in L if x[1] > P_no_error]
+        result = [x[0] for x in L if x[1] > P_no_error]
         if result:
             return P_no_error, result
         else:
