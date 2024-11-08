@@ -15,36 +15,28 @@ import sys
 import os 
 import re
 import heapq
-
 import nltk
+
 from nltk import RegexpTokenizer
+from nltk import WordNetLemmatizer
 
-
-
+#from my own files
+from special_vocab import stopwords
 
 
 ###___________PREPROCESSING___________________
 ###_____INDEXING RULES___________________
 
-#stopwords list (sorted) with id
-stopwords = ['a', 'about', 'above', 'after', 'again', 'against', 'all', 'almost', 'already', 'along','another', 'around', 'also', 'although', 'am', 'among', 'an', 'and', 'another', 'any', 'are', 'as', 'at', 
-             'be', 'because', 'before', 'behind', 'below', 'beside', 'besides', 'between', 'beyond', 'both', 'but', 'by', 'can', 'co', 'corp',
-             'd', 'do', 'down', 'due', 'during', 'each', 'eg', 'elsewhere', 'etc', 'even', 'ever', 'ex', 'few', 'for', 'from', 'further', 'furthermore', 
-             'had', 'have', 'he', 'hence', 'her', 'here', 'hers', 'herself', 'him', 'himself', 'his', 'how', 'however',
-             'i', 'ie', 'if', 'in',  'inc',  'spite','into', 'it', 'its', 'itself', 'just','less', 'll', 'ltd' , 'm', 'may', 'me', 'meanwhile', 'might', 'more', 'moreover', 'most', 'my', 'myself', 
-             'neither', 'no', 'nor', 'not', 'now', 'o', 'of', 'off', 'on', 'once', 'only', 'or', 'other', 'our', 'ours', 'ourselves', 'out', 'over', 'overall', 'own', 're', 
-             's', 'same', 'several','she', 'so', 'some', 'such', 't', 'than', 'that', 'the', 'their', 'theirs', 'them', 'themselves', 'then', 'there', 'therefore', 'these', 'they', 
-             'this', 'those', 'through', 'to', 'too', 'under', 'until', 'up', 've', 'very', 'via', 'we', 'what', 'when', 'where', 'which', 'while', 'who', 'whom', 'why', 
-             'will', 'with', 'y', 'yet', 'you', 'your', 'yours', 'yourself', 'yourselves']         
+#stopwords list (sorted) 
 
 
 #a dictionary for stopword and their id 
 #(which is their sorted index position)
 stopword_id = {sw:i for i, sw in enumerate(stopwords)}
 
-grammar_term = ["'", ".", ",", "?", "!","'s", "'ve", "'ll", "'m", "'re", "'d", "'t"]
+grammar_term = ["'", ".", "?", "!","'s", "'ve", "'ll", "'m", "'re", "'d", "'t"]
 
-not_index = ["'", ".", "?", "!", ","]
+not_index = ["'", ".", "?", "!"]
 
 
 
@@ -86,7 +78,7 @@ pos_lem_mapping = {'NN': 'n',       #just noun - but might have gerund
                    'RBS': 'r',      #RBR: adverb, comparative
                    'RBR':'r'}       #RBS: adverb, superlative
 
-lemmatiser = nltk.WordNetLemmatizer()
+lemmatiser = WordNetLemmatizer()
 
 
 
@@ -187,6 +179,12 @@ def line_tokenise(line):
     s = re.sub(r"\b(?:sha)n\'t\b", ' shall not ', s)
     s = re.sub(r"\b(?:wo)n\'t\b", ' will not ', s)
     
+    #remove decimal number
+    #but ignore stuff like IP adress
+    #got it from stackoverflown
+    #god damn regex is hard
+    s = re.sub(r'(?<!\S)\d+\.\d+\b(?!\.\d)', '',s)
+    
     
     tokens = my_tokeniser.tokenize(s) 
     
@@ -280,41 +278,53 @@ def doc_parsing(docID, doc_path):
     
     term_pos = dict()
     sw_pos = dict()
+    tokens = []
+    
     #PARSING LINE BY LINE
-    #record the position of last indexing tokens on the line
+    #record the ending position
+    #then print out endpos, whole line
+
+    L_line = []
+    
     with open(doc_path, 'r') as f:
-        tokens = [line_tokenise(line) for line in f]
+        p = 0
+        for line in f:
+            if not line: 
+                continue
+            line_tk = line_tokenise(line)         
+
+            #count position in each line
+            for i, tk in enumerate(line_tk):
+                tokens.append(tk)
+                if tk in not_index:
+                    continue
+                elif tk == "'s" and i > 0 and line_tk[i-1] not in ('he', 'she', 'it'):
+                    continue
+                p += 1
+            
+            #get line and end position
+            L_line.append(str(p)+ ',' + line + '\n')   
+            
+                
+    with open(os.path.join(doc_line_dir, str(docID)), 'w') as f:
+        f.writelines(L_line)
     
-    no_line = len(tokens)
-    line_endposition = [0 for i in range(0, no_line)]  
     
-    #flatten the list of tokens
-    tokens = [item[i] for item in tokens for i in range(0,len(item))]
       
     #pos_tag, lemmatise, and index
     tokens_tag = nltk.pos_tag(tokens)
     position = 0
-    line = 0
     
     for i, tk in enumerate(tokens_tag):
-        #if it is the end of line
-        #which is marked by an inserted comma
-        #this is because somehow comma does not affect pos_tag accuracy
-        if tk[0] == ',':
-            if i > 0 and tokens_tag[i-1] != ',': 
-                line_endposition[line] = position
-            line += 1
-            
-        else:
-            term = index_term(tk[0], tk[1])
-            if term: 
-                position += 1
-                if term in stopwords:
-                    add_position(sw_pos, term, position)
-                    add_posting(posting_sw, term, docID, word_type='sw')
-                else:
-                    add_position(term_pos, term, position)
-                    add_posting(posting_term, term, docID, word_type='term')
+        term = index_term(tk[0], tk[1])
+        if term: 
+            position += 1
+            if term in stopwords:
+                add_position(sw_pos, term, position)
+                add_posting(posting_sw, term, docID, word_type='sw')
+            else:
+                add_position(term_pos, term, position)
+                add_posting(posting_term, term, docID, word_type='term')
             
     sorted_terms = sorted(term_pos.keys())
     
@@ -433,9 +443,6 @@ index_block_size = 300
 
 index_dir = create_dir(parent = False, child = index_folder)
 
-#to store the end position of each doc's line
-doc_line_pos_dir = create_dir(index_dir, "doc_line_endposition")
-
 #to store the specific position of a term/stopword in each doc
 doc_term_position_dir = create_dir(index_dir, "doc_term_position")
 doc_sw_position_dir = create_dir(index_dir, "doc_sw_position")
@@ -445,14 +452,12 @@ doc_sw_position_dir = create_dir(index_dir, "doc_sw_position")
 term_posting_dir = create_dir(index_dir, "term_doc")
 sw_posting_dir = create_dir(index_dir, "sw_doc")
 
+#FOlDER FOR FUCKING LINES
+doc_line_dir = create_dir(index_dir, 'doc_line_endpos')
 
 #FOLDER FOR VOCAB
 vocab_dir = create_dir(index_dir, 'vocabulary')      
-
-#first, write the path of doc
-with open(os.path.join(index_dir, "raw_documents.txt"), 'w') as f:
-          f.write(doc_dir + '\n')
-          
+         
 
 
 #__3___BUILDING INVERTED INDEX STEP BY STEP
@@ -475,6 +480,25 @@ print_posting(posting_sw,
               mode = 'w', 
               keys = [sw for sw in stopwords if sw in posting_sw.keys()], 
               word_type = 'sw')
+
+
+#get the total frequency of all terms:
+sumf = 0
+for term in posting_term:
+    if term[0] in 'abcdefghijklmnopqrstuvwxyz':
+        sumf += posting_term[term][0]
+        
+
+
+#write the path of doc 
+#and total frequency of all terms 
+#together in one documents 
+#named reference
+with open(os.path.join(index_dir, "reference.txt"), 'w') as f:
+          f.write(doc_dir + '\n')
+          f.write(str(sumf) + '\n')
+          
+ 
 
 
 #check time            
