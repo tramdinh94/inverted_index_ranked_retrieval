@@ -27,12 +27,8 @@ from special_vocab import stopwords
 ###___________PREPROCESSING___________________
 ###_____INDEXING RULES___________________
 
-#stopwords list (sorted) 
-
-
-#a dictionary for stopword and their id 
-#(which is their sorted index position)
-stopword_id = {sw:i for i, sw in enumerate(stopwords)}
+#keep sentence punctuation 
+#for pos_tag accuracy
 
 grammar_term = ["'", ".", "?", "!","'s", "'ve", "'ll", "'m", "'re", "'d", "'t"]
 
