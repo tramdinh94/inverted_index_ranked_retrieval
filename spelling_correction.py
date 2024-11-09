@@ -26,9 +26,6 @@ from special_vocab import irr_inflection_len3, irr_inflection, irr_plural
 
 wnlemmatise = nltk.WordNetLemmatizer().lemmatize
 
-#test data: sumf = 157796 word occurence
-
-
 
         
 
@@ -43,44 +40,66 @@ wnlemmatise = nltk.WordNetLemmatizer().lemmatize
 
 
 def quick_plural_trim(w, vocab):
+    
+    
     if len(w) <4:
-        return
+        return  
     
     char1 = w[0]
     
+    results = []
+    
     if w.endswith('men'):
         new = w[:-3] + 'man'
-        if new in vocab[char1]: return new 
+        if new in vocab[char1]: 
+            results.append(new)
     
-    elif w.endswith('sses'):
-        if w[:-2] in vocab[char1]: return w[:-2]
-    
-    elif w.endswith('ies'):
-        new =  w[:-3]+'y' 
-        if new in vocab[char1]: return new 
-        new = w[:-1] 
-        if new in vocab[char1]: return new
-        
-    elif w.endswith('ves'):
-        new = w[:-1] 
-        if new in vocab[char1]: return new
-        new = w[:-3] + 'f' 
-        if new in vocab[char1]: return new
-        new =  w[:-3] + 'fe' 
-        if new in vocab[char1]: return new
-        
-    elif w.endswith('ces'):
-        new = w[:-3] + 'x'
-        if new in vocab[char1]: return new
-    
-    elif w.endswith('es'):
+    if w.endswith('sses'):
         new = w[:-2] 
-        if new in vocab[char1]: return new
-        new = w[:-2] + 'is' 
-        if new in vocab[char1]: return new
+        if new in vocab[char1]: 
+            results.append(new)
+    
+    if w.endswith('ies'):
+        new =  w[:-3]+'y' 
+        if new in vocab[char1]: 
+            results.append(new)
+        new = w[:-1] 
+        if new in vocab[char1]: 
+            results.append(new)
         
-    elif w.endswith('s'):
-        if w[:-1] in vocab[char1]: return w[:-1]
+    if w.endswith('ves'):
+        new = w[:-1] 
+        if new in vocab[char1]: 
+            results.append(new)
+        
+        new = w[:-3] + 'f' 
+        if new in vocab[char1]: 
+            results.append(new)
+        
+        new =  w[:-3] + 'fe' 
+        if new in vocab[char1]: 
+            results.append(new)
+        
+    if w.endswith('ces'):
+        new = w[:-3] + 'x'
+        if new in vocab[char1]: 
+            results.append(new)
+    
+    if w.endswith('es'):
+        new = w[:-2] 
+        if new in vocab[char1]: 
+            results.append(new)
+        new = w[:-2] + 'is' 
+        if new in vocab[char1]: 
+            results.append(new)
+     
+
+    if w.endswith('s'):
+        new = w[:-1]
+        if new in vocab[char1]: 
+            results.append(new)
+            
+    return results
         
       
 
@@ -143,7 +162,7 @@ def quick_lemmatise(w):
 #output: a dictionary 
     #key: candidate word (exists in vocab)
     #value: tuple (min_edit_distance, frequency)
-def correct_candidate_set(query_word, max_edit, vocab, desperate):
+def correct_candidate_set(query_word, vocab, desperate,  max_edit = 2):
 
     candidates = dict()
     permu = set()
@@ -163,16 +182,17 @@ def correct_candidate_set(query_word, max_edit, vocab, desperate):
             
         
     def check_edit_result(s, edit):    
-        nonlocal desperate      
-        
+        nonlocal desperate
+        nonlocal vocab
         char1 = s[0]
+              
         if s in vocab[char1]:
             add_to_candidates(s, edit)
                  
         elif len(s) >=3 and desperate:
-            new = quick_plural_trim(s, vocab)
-            if new: #already exist in vocab
-                add_to_candidates(new, edit)
+            news = quick_plural_trim(s, vocab)
+            if news: #already exist in vocab
+                for i in news: add_to_candidates(i, edit)
             else:
                 new = quick_lemmatise(s)
                 if new and new in vocab[char1]:
@@ -335,7 +355,10 @@ def spelling_correction(q, vocab, sumf, obvious, max_edit = 2):
     else:
         desperate = False
         
-    candidates = correct_candidate_set(q, max_edit, vocab, desperate)
+    candidates = correct_candidate_set(q, vocab, desperate, max_edit=2)
+    print(candidates)
+    
+    
     if not candidates: 
         return False
     
