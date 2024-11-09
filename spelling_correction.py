@@ -255,55 +255,75 @@ def correct_candidate_set(query_word, max_edit, vocab, desperate):
 ######______NOW THE MAIN PART____________________________________________
 #####_______NEED TO OUTPUT LIST OF SPELLING CORRECTION CANDIDATES_________
 ####________RANKEDDDDD___________________________________________________
-#produce a rank number proportional to probability that a word is correct
-#given data (actual error)
-#a very very very rudimental error model
-#because I am so dead don't wanna code anymore
+# =============================================================================
+# produce a rank number proportional to probability that a word is correct
+# given data (actual error)
+# a very very very rudimental error model
+# because I am so dead don't wanna code anymore
+# 
+# very LAZY ASSUMPTIONs:
+#     1. P(word) = frequency in vocab/all word frequency in vocab 
+#        this set of data has in total 157796 term occurences
+#        may be should just calculate this when indexing
+#        cause indexing has 60 seconds to run
+#     2. given a correct word, probability of error is P(error)
+#        which, honestly in this case depends on the professor
+#        since 26 marks is for query with no error, 10 with obvious error, 4 for not obvious error
+#        and not all words in query with errors would have error
+#        I assume:
+#             -P(correct query) = 0.65 ~ 26/40
+#             -P(obviously wrong query) = 0.25  ~ 10/40 
+#             -P(not obviously wrong query ) = 0.1 = 4/10
+#             
+#           
+#     3. given any error (obvious or not), there is 80% chance an error within 1-edit distance, 
+#        and 20% chance in 2 edit distance
+#     
+#     4. now, I am lazy, so won't calculate the possibility of error at character level
+#     
+#     =>so: P(query|correct) takes the following form
+#       - if query == original (means edit = 0)
+#              P(query|original) = 0.65  (really, can take it as probability of edit = 0)
+#             
+#       - if query is obviously wrong (not in vocab)
+#             P(obviously_wrong_query|original) = 0.25*P(edit-distance)
+#             
+#       - if query is not obviously wrong (in vocab)    
+#             P(not_obviously_wrong_query|original) = 0.1*P(edit-distance)
+# 
+#       
+#     => so: the non-normalise posterior probability is:
+#        - P(original|query) ~ P(query|original) * P(original)
+# 
+# #anyways, bayesian interpretation is that probability reflect our belief about stuff
+# #I don't know much, so this is the best I can do with my belief
+# 
+# =============================================================================
 
-#very LAZY ASSUMPTIONs:
-    # P(word) = frequency in vocab/all word frequency in vocab 
-        # this set of data has in total 157796 term occurences
-        # may be should just calculate this when indexing
-        # cause indexing has 60 seconds to run
-    # given a correct word, probability of error is P(error)
-        # which, honestly in this case depends on the professor
-        # since 26 marks is for query with no error, 10 with obvious error, 4 for not obvious error
-        # and not all words in query with errors would have error
-        # I assume:
-            # P(correct query) = 0.65 ~ 26/40            
-            # P(obviously wrong query) = 0.25  ~ 10/40 
-            # P(not obviously wrong query ) = 0.1 = 4/10
-            
-          
-    #given any error (obvious or not), there is 80% chance an error within 1-edit distance, 
-          #and 20% chance in 2 edit distance
-    
-    #now, I am lazy, so won't calculate the possibility of error at character level
-    
-    #so: P(query|correct) takes the following form
-        # if query == original (means edit = 0)
-            # P(query|original) = 0.65  (really, can take it as probability of edit = 0)
-            
-        # if query is obviously wrong (not in vocab)
-            # P(obviously_wrong_query|original) = 0.25*P(edit-distance)
-            
-        # if query is not obviously wrong (in vocab)    
-            # P(not_obviously_wrong_query|original) = 0.1*P(edit-distance)
 
-      
-    #so: the non-normalise posterior probability is:
-        # P(original|query) ~ P(query|original) * P(original)
+# =============================================================================
+# AFTER CHECKING WITH PROVIDED TESTS
+# HAVE TO REVISE ASSUMPTION ABOUT ERROR MODEL
+#
+#       P(correct) at 0.65 is too low
+#       let's try:
+#           - P(correct) at 0.75
+#           - P(obvious error) at 0.2
+#           - P(non-obvious error) at 0.05
 
-#anyways, bayesian interpretation is that probability reflect our belief about stuff
-#I don't know much, so this is the best I can do with my belief
+# Hell this assumption seems to be killing it
+# =============================================================================
+
+
+
 
 def P_correct(Pw, edit, obvious):
     
     if edit == 0:   #means query = original (q = w)
-        return 0.65*Pw
+        return 0.75*Pw
         
     else:
-        P_error = 0.25 if obvious else 0.1
+        P_error = 0.2 if obvious else 0.05
         P_edit = 0.8 if edit == 1 else 0.2
         return Pw*P_error*P_edit
     
@@ -327,14 +347,23 @@ def spelling_correction(q, vocab, sumf, obvious, max_edit = 2):
         
     L.sort(key = lambda x: x[1], reverse=True)
     
+    
     if obvious:
-        return L[0][0]
+        probably = [x[0] for x in L if x[1] > 0.00015]
+        if probably:
+            if len(probably) == 1:
+                return probably[0]
+            else:
+                return probably
+        else:
+            return L[0][0]
     else:
         Pq = vocab[q[0]][q]/sumf
         P_no_error = P_correct(Pq, 0, obvious)  #0 edit
+        
         result = [x[0] for x in L if x[1] > P_no_error]
         if result:
-            return P_no_error, result
+            return result
         else:
             return False
             
