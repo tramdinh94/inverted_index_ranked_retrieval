@@ -125,7 +125,7 @@ def query_correction(query):
 def retrieve_postings(w):
     global term_posting_dir
     global sw_posting_dir
-    found = False
+    found = []
     
     if w in stopwords:
         filepath = os.path.join(sw_posting_dir, "1")
@@ -158,6 +158,8 @@ def common_docs(single_query):
     
     all_posting_lists = [retrieve_postings(w) for w in single_query] 
     
+    
+    
     results = []
     #number of query terms
     n = len(single_query)
@@ -170,10 +172,6 @@ def common_docs(single_query):
             pcount += 1
             if pcount == n-1: 
                 results.append(p)
-        
-            if pcount > n:
-                raise Exception(f'something wrong with index, docID {p} appear more than no term')
-                return False
             
         else: 
             pcount = 0 #reset counting
@@ -253,12 +251,16 @@ def processed_query(original_query):
     
     query_updated, multiple = query_correction(original_query)
     
+    print('query updated and multiple')
+    print(query_updated)
+    print(multiple)
+    
     if not multiple:
         query_combination = [query_updated]
     else:
         query_combination = [x if isinstance(x, list) else [x] for x in query_updated]
         query_combination = list(itertools.product(*query_combination))
-        
+    
     
     ranked_docs = []
     
@@ -295,7 +297,7 @@ def print_lines(docID, position_combination):
             endpos = int(s[:i])
             if c[-1] <= endpos:
                 Lines.append(s[i+1:])
-                while c and c[-1] < endpos:
+                while c and c[-1] <= endpos:
                     c.pop()
             if len(c) == 0:
                 break

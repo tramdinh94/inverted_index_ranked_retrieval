@@ -301,6 +301,9 @@ def doc_parsing(docID, doc_path):
             
             #get line and end position
             if change: 
+                if docID == 1: 
+                    print(line)
+                    print(str(p) + ',' + line)
                 L_line.append(str(p)+ ',' + line)   
             
                 
