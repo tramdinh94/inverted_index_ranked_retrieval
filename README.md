@@ -1,4 +1,5 @@
 (COMP6714 assignment)
+
 **INVERTED INDEX**
 -Parse a collection of documents, preprocess the text, tokenise and build an inverted index on disk 
 -In the index, words of same initial characters are grouped together in one file for faster search
