@@ -279,15 +279,11 @@ def correct_candidate_set(query_word, vocab, desperate,  max_edit = 2):
 # produce a rank number proportional to probability that a word is correct
 # given data (actual error)
 # a very very very rudimental error model
-# because I am so dead don't wanna code anymore
 # 
 # very LAZY ASSUMPTIONs:
 #     1. P(word) = frequency in vocab/all word frequency in vocab 
-#        this set of data has in total 157796 term occurences
-#        may be should just calculate this when indexing
-#        cause indexing has 60 seconds to run
 #     2. given a correct word, probability of error is P(error)
-#        which, honestly in this case depends on the professor
+#        which, honestly in comp6714 depends on the professor
 #        since 26 marks is for query with no error, 10 with obvious error, 4 for not obvious error
 #        and not all words in query with errors would have error
 #        I assume:
@@ -315,9 +311,6 @@ def correct_candidate_set(query_word, vocab, desperate,  max_edit = 2):
 #     => so: the non-normalise posterior probability is:
 #        - P(original|query) ~ P(query|original) * P(original)
 # 
-# #anyways, bayesian interpretation is that probability reflect our belief about stuff
-# #I don't know much, so this is the best I can do with my belief
-# 
 # =============================================================================
 
 
@@ -331,7 +324,7 @@ def correct_candidate_set(query_word, vocab, desperate,  max_edit = 2):
 #           - P(obvious error) at 0.2
 #           - P(non-obvious error) at 0.05
 
-# Hell this assumption seems to be killing it
+# Hell this assumption seems to be good
 # =============================================================================
 
 
@@ -356,12 +349,10 @@ def spelling_correction(q, vocab, sumf, obvious, max_edit = 2):
         desperate = False
         
     candidates = correct_candidate_set(q, vocab, desperate, max_edit=2)
-    print(candidates)
     
-    
-    if not candidates: 
+    if not candidates and not obvious: 
         return False
-    
+
     L = []
     for w in candidates:
         edit = candidates[w][0]

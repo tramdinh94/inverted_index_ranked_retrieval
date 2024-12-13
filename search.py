@@ -6,8 +6,7 @@ Created on Wed Nov  6 16:31:30 2024
 """
 
 #to check time
-import time
-start_time = time.time()
+
 
 
 import sys
@@ -52,7 +51,7 @@ def loading_vocab(vocab_dir, vocab_type):
     elif vocab_type == 'digits':
         firstchars = '0123456789'
 
-    vocab = {char:None for char in firstchars }
+    vocab = {char:[] for char in firstchars }
     
     all_files = os.listdir(vocab_dir)
     loading_files = [fn for fn in all_files if fn in vocab]
@@ -125,7 +124,7 @@ def query_correction(query):
 def retrieve_postings(w):
     global term_posting_dir
     global sw_posting_dir
-    found = []
+    found = False
     
     if w in stopwords:
         filepath = os.path.join(sw_posting_dir, "1")
@@ -158,8 +157,6 @@ def common_docs(single_query):
     
     all_posting_lists = [retrieve_postings(w) for w in single_query] 
     
-    
-    
     results = []
     #number of query terms
     n = len(single_query)
@@ -172,6 +169,10 @@ def common_docs(single_query):
             pcount += 1
             if pcount == n-1: 
                 results.append(p)
+        
+            if pcount > n:
+                raise Exception(f'something wrong with index, docID {p} appear more than no term')
+                return False
             
         else: 
             pcount = 0 #reset counting
@@ -251,16 +252,12 @@ def processed_query(original_query):
     
     query_updated, multiple = query_correction(original_query)
     
-    print('query updated and multiple')
-    print(query_updated)
-    print(multiple)
-    
     if not multiple:
         query_combination = [query_updated]
     else:
         query_combination = [x if isinstance(x, list) else [x] for x in query_updated]
         query_combination = list(itertools.product(*query_combination))
-    
+        
     
     ranked_docs = []
     
@@ -326,8 +323,10 @@ def query_results(input_string):
     printed_docs = set()
     for item in ranked_docs:
         if item[0] not in printed_docs:
-            print(item[0])
-            if pain_in_the_ass:
+            if not pain_in_the_ass:
+                print(item[0])
+            else:
+                print("> " + str(item[0]))
                 print_lines(item[0], item[-1])
             printed_docs.add(item[0])
             
@@ -372,7 +371,6 @@ with open(os.path.join(index_dir, 'reference.txt'), 'r') as f:
     doc_dir = L[0]
     sumf = int(L[1])
    
-
 
 
 
